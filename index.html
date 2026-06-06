@@ -1,0 +1,1297 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Mi Mapa con Mapbox</title>
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+    <link href="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.css" rel="stylesheet">
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.js"></script>
+    <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v5.0.0/mapbox-gl-geocoder.min.js"></script>
+    <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v5.0.0/mapbox-gl-geocoder.css" type="text/css">
+    <style>
+        body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
+        #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+        .mapboxgl-ctrl-geocoder {
+            min-width: 300px;
+        }
+
+        /* Botón de chat flotante */
+        #chat-button {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        #chat-button:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+        }
+
+        #chat-button svg {
+            width: 30px;
+            height: 30px;
+            fill: white;
+        }
+
+        /* Panel de chat */
+        #chat-panel {
+            position: fixed;
+            bottom: 100px;
+            right: 30px;
+            width: 380px;
+            height: 500px;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+            display: none;
+            flex-direction: column;
+            z-index: 999;
+            overflow: hidden;
+        }
+
+        #chat-panel.active {
+            display: flex;
+        }
+
+        /* Encabezado del chat */
+        #chat-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            font-weight: bold;
+            font-size: 18px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        #chat-close {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Área de mensajes */
+        #chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            padding: 12px 16px;
+            border-radius: 12px;
+            max-width: 80%;
+            word-wrap: break-word;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message.bot {
+            background: white;
+            border: 1px solid #e0e0e0;
+            margin-right: auto;
+        }
+
+        .message.user {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            margin-left: auto;
+        }
+
+        .message strong {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 12px;
+            opacity: 0.8;
+        }
+
+        /* Área de entrada */
+        #chat-input-area {
+            padding: 15px;
+            background: white;
+            border-top: 1px solid #e0e0e0;
+            display: flex;
+            gap: 10px;
+        }
+
+        #chat-input {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 25px;
+            outline: none;
+            font-size: 14px;
+        }
+
+        #chat-input:focus {
+            border-color: #667eea;
+        }
+
+        #chat-send {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: transform 0.2s ease;
+        }
+
+        #chat-send:hover {
+            transform: scale(1.05);
+        }
+
+        #chat-send:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Botones de sugerencias */
+        .suggestion-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .suggestion-btn {
+            background: #f0f0f0;
+            border: 1px solid #ddd;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            text-align: left;
+            transition: all 0.2s ease;
+            font-size: 13px;
+        }
+
+        .suggestion-btn:hover {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        /* Indicador de escritura */
+        .typing-indicator {
+            display: flex;
+            gap: 4px;
+            padding: 12px 16px;
+        }
+
+        .typing-indicator span {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #999;
+            animation: typing 1.4s infinite;
+        }
+
+        .typing-indicator span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-indicator span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typing {
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-10px); }
+        }
+
+        .route-info {
+            background: #e8f4f8;
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 8px;
+            font-size: 13px;
+        }
+
+        .route-info strong {
+            color: #2c5aa0;
+        }
+
+        .safety-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+
+        .safety-high {
+            background: #4caf50;
+            color: white;
+        }
+
+        .safety-medium {
+            background: #ff9800;
+            color: white;
+        }
+
+        .safety-low {
+            background: #f44336;
+            color: white;
+        }
+
+        /* Panel de navegación paso a paso */
+        #navigation-panel {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 400px;
+            max-height: 80vh;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+            display: none;
+            flex-direction: column;
+            z-index: 998;
+            overflow: hidden;
+        }
+
+        #navigation-panel.active {
+            display: flex;
+        }
+
+        #nav-header {
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        #nav-header h3 {
+            margin: 0;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        #nav-close {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #nav-summary {
+            padding: 15px 20px;
+            background: #f5f5f5;
+            border-bottom: 1px solid #ddd;
+        }
+
+        #nav-summary .summary-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        #nav-summary .summary-item:last-child {
+            margin-bottom: 0;
+        }
+
+        #nav-summary .summary-label {
+            color: #666;
+        }
+
+        #nav-summary .summary-value {
+            font-weight: bold;
+            color: #333;
+        }
+
+        #nav-steps {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+        }
+
+        .nav-step {
+            display: flex;
+            gap: 12px;
+            padding: 12px;
+            margin-bottom: 8px;
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        .nav-step:hover {
+            background: #f9f9f9;
+            border-color: #4CAF50;
+        }
+
+        .nav-step.active {
+            background: #e8f5e9;
+            border-color: #4CAF50;
+            border-width: 2px;
+        }
+
+        .nav-step-icon {
+            width: 40px;
+            height: 40px;
+            background: #4CAF50;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+
+        .nav-step.active .nav-step-icon {
+            background: #2e7d32;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+
+        .nav-step-content {
+            flex: 1;
+        }
+
+        .nav-step-instruction {
+            font-weight: 500;
+            color: #333;
+            margin-bottom: 4px;
+            font-size: 14px;
+        }
+
+        .nav-step-distance {
+            color: #666;
+            font-size: 12px;
+        }
+
+        .nav-step-maneuver {
+            font-size: 20px;
+            margin-right: 5px;
+        }
+
+        #nav-footer {
+            padding: 15px 20px;
+            background: white;
+            border-top: 1px solid #ddd;
+            display: flex;
+            gap: 10px;
+        }
+
+        #nav-footer button {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.2s ease;
+        }
+
+        #start-navigation {
+            background: #4CAF50;
+            color: white;
+        }
+
+        #start-navigation:hover {
+            background: #45a049;
+        }
+
+        #cancel-navigation {
+            background: #f44336;
+            color: white;
+        }
+
+        #cancel-navigation:hover {
+            background: #da190b;
+        }
+
+        /* Indicador de paso actual en el mapa */
+        .current-step-marker {
+            background: #4CAF50;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            border: 3px solid white;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+    </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<!-- Botón de chat flotante -->
+<button id="chat-button" title="Asistente de Rutas Seguras">
+    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/>
+        <path d="M7 9h2v2H7zm4 0h2v2h-2zm4 0h2v2h-2z"/>
+    </svg>
+</button>
+
+<!-- Panel de chat -->
+<div id="chat-panel">
+    <div id="chat-header">
+        <span>🛡️ Asistente de Rutas Seguras</span>
+        <button id="chat-close">&times;</button>
+    </div>
+    <div id="chat-messages">
+        <div class="message bot">
+            <strong>Asistente</strong>
+            ¡Hola! Soy tu asistente de rutas seguras. Puedo ayudarte a encontrar las rutas más seguras para tu viaje, priorizando tu seguridad sobre la velocidad. ¿A dónde quieres ir?
+            <div class="suggestion-buttons">
+                <button class="suggestion-btn" onclick="handleSuggestion('¿Cómo funcionan las rutas seguras?')">¿Cómo funcionan las rutas seguras?</button>
+                <button class="suggestion-btn" onclick="handleSuggestion('Quiero una ruta segura')">Quiero una ruta segura</button>
+                <button class="suggestion-btn" onclick="handleSuggestion('¿Qué tipo de transporte recomiendas?')">¿Qué tipo de transporte recomiendas?</button>
+            </div>
+        </div>
+    </div>
+    <div id="chat-input-area">
+        <input type="text" id="chat-input" placeholder="Escribe tu mensaje..." />
+        <button id="chat-send">Enviar</button>
+    </div>
+</div>
+
+<!-- Panel de navegación paso a paso -->
+<div id="navigation-panel">
+    <div id="nav-header">
+        <h3>🧭 Navegación Activa</h3>
+        <button id="nav-close">&times;</button>
+    </div>
+    <div id="nav-summary">
+        <div class="summary-item">
+            <span class="summary-label">Distancia total:</span>
+            <span class="summary-value" id="total-distance">-</span>
+        </div>
+        <div class="summary-item">
+            <span class="summary-label">Tiempo estimado:</span>
+            <span class="summary-value" id="total-duration">-</span>
+        </div>
+        <div class="summary-item">
+            <span class="summary-label">Nivel de seguridad:</span>
+            <span class="summary-value" id="route-safety">-</span>
+        </div>
+    </div>
+    <div id="nav-steps">
+        <!-- Los pasos se agregarán dinámicamente aquí -->
+    </div>
+    <div id="nav-footer">
+        <button id="start-navigation">▶️ Iniciar</button>
+        <button id="cancel-navigation">✖️ Cancelar</button>
+    </div>
+</div>
+
+<script>
+    mapboxgl.accessToken = '';
+    
+    // 1. Configuración del mapa (se cierra correctamente abajo)
+    const map = new mapboxgl.Map({
+        container: 'map',
+        style: 'mapbox://styles/mapbox/streets-v12',
+        center: [-99.1341, 19.2853],
+        zoom: 13
+    }); // <--- AQUÍ DEBE CERRARSE EL OBJETO
+
+    // Agregar control de búsqueda en la esquina superior izquierda
+    // Restringido a Ciudad de México y Estado de México
+    // Incluye búsqueda de lugares (POIs) además de calles
+    const geocoder = new MapboxGeocoder({
+        accessToken: mapboxgl.accessToken,
+        mapboxgl: mapboxgl,
+        marker: true,
+        placeholder: 'Buscar lugares, calles, direcciones...',
+        language: 'es',
+        countries: 'mx', // Solo México
+        bbox: [-99.3667, 19.0489, -98.9414, 19.5926], // Bounding box para CDMX y Estado de México
+        proximity: {
+            longitude: -99.1341,
+            latitude: 19.2853
+        },
+        types: 'country,region,postcode,district,place,locality,neighborhood,address,poi', // Incluye POIs
+        filter: function(item) {
+            // Filtrar solo resultados que contengan "Ciudad de México", "CDMX", "Estado de México" o "México"
+            const placeName = item.place_name.toLowerCase();
+            const context = item.context ? item.context.map(c => c.text.toLowerCase()).join(' ') : '';
+            const searchText = (placeName + ' ' + context).toLowerCase();
+            
+            // Verificar si el resultado está en CDMX o Estado de México
+            return searchText.includes('ciudad de méxico') ||
+                   searchText.includes('cdmx') ||
+                   searchText.includes('estado de méxico') ||
+                   searchText.includes('mexico city') ||
+                   (searchText.includes('méxico') && !searchText.includes('nuevo león') &&
+                    !searchText.includes('jalisco') && !searchText.includes('guanajuato'));
+        }
+    });
+    
+    map.addControl(geocoder, 'top-left');
+
+    // 2. Evento load (fuera de la configuración anterior)
+    map.on('load', () => {
+        map.addSource('mis-puntos', {
+            'type': 'geojson',
+            'data': 'datos.geojson' 
+        });
+
+        map.addLayer({
+            'id': 'capa-puntos',
+            'type': 'circle',
+            'source': 'mis-puntos',
+            'paint': {
+                'circle-radius': 8,
+                'circle-color': '#3388ff',
+                'circle-stroke-width': 2,
+                'circle-stroke-color': '#ffffff'
+            }
+        });
+
+        map.on('click', 'capa-puntos', (e) => {
+            const coordinates = e.features[0].geometry.coordinates.slice();
+            const nombre = e.features[0].properties.nombre;
+
+            new mapboxgl.Popup()
+                .setLngLat(coordinates)
+                .setHTML(`<strong>${nombre}</strong>`)
+                .addTo(map);
+        });
+    });
+
+    // ============================================
+    // SISTEMA DE CHAT Y RUTAS SEGURAS
+    // ============================================
+
+    // Variables globales
+    let currentRoute = null;
+    let userLocation = null;
+    let destinationLocation = null;
+    let currentNavigationStep = 0;
+    let navigationSteps = [];
+    let navigationActive = false;
+    let routeMarkers = [];
+    let riskData = {
+        ciclista: null,
+        coches: null,
+        moto: null,
+        peaton: null
+    };
+
+    // Cargar datos de riesgo
+    async function loadRiskData() {
+        try {
+            const responses = await Promise.all([
+                fetch('riesgo_ciclista.geojson'),
+                fetch('riesgo_coches.geojson'),
+                fetch('riesgo_peaton.geojson')
+            ]);
+            
+            const data = await Promise.all(responses.map(r => r.json()));
+            riskData.ciclista = data[0];
+            riskData.coches = data[1];
+            riskData.peaton = data[2];
+            
+            console.log('Datos de riesgo cargados correctamente');
+        } catch (error) {
+            console.error('Error cargando datos de riesgo:', error);
+        }
+    }
+
+    // Cargar datos al iniciar
+    loadRiskData();
+
+    // Elementos del DOM
+    const chatButton = document.getElementById('chat-button');
+    const chatPanel = document.getElementById('chat-panel');
+    const chatClose = document.getElementById('chat-close');
+
+    // ============================================
+    // FUNCIONES DE NAVEGACIÓN PASO A PASO
+    // ============================================
+
+    // Obtener icono de maniobra según el tipo
+    function getManeuverIcon(type) {
+        const icons = {
+            'turn-right': '➡️',
+            'turn-left': '⬅️',
+            'sharp-right': '↗️',
+            'sharp-left': '↖️',
+            'slight-right': '↗️',
+            'slight-left': '↖️',
+            'straight': '⬆️',
+            'uturn': '↩️',
+            'arrive': '🎯',
+            'depart': '🚀',
+            'roundabout': '🔄',
+            'merge': '🔀',
+            'fork': '🔱',
+            'end-of-road': '🛑',
+            'continue': '⬆️'
+        };
+        return icons[type] || '➡️';
+    }
+
+    // Obtener instrucción en español
+    function getSpanishInstruction(instruction) {
+        const translations = {
+            'turn right': 'Gira a la derecha',
+            'turn left': 'Gira a la izquierda',
+            'sharp right': 'Gira bruscamente a la derecha',
+            'sharp left': 'Gira bruscamente a la izquierda',
+            'slight right': 'Gira ligeramente a la derecha',
+            'slight left': 'Gira ligeramente a la izquierda',
+            'straight': 'Continúa recto',
+            'uturn': 'Da la vuelta en U',
+            'arrive': 'Has llegado a tu destino',
+            'depart': 'Comienza tu ruta',
+            'roundabout': 'Toma la rotonda',
+            'merge': 'Incorpórate',
+            'fork': 'Toma el desvío',
+            'end of road': 'Final de la calle',
+            'continue': 'Continúa'
+        };
+        
+        let translated = instruction.toLowerCase();
+        for (const [eng, esp] of Object.entries(translations)) {
+            translated = translated.replace(eng, esp);
+        }
+        return translated.charAt(0).toUpperCase() + translated.slice(1);
+    }
+
+    // Formatear distancia
+    function formatDistance(meters) {
+        if (meters < 1000) {
+            return `${Math.round(meters)} m`;
+        }
+        return `${(meters / 1000).toFixed(1)} km`;
+    }
+
+    // Formatear duración
+    function formatDuration(seconds) {
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        
+        if (hours > 0) {
+            return `${hours}h ${minutes}min`;
+        }
+        return `${minutes} min`;
+    }
+
+    // Calcular ruta con Mapbox Directions API
+    async function calculateRoute(start, end, profile = 'walking') {
+        try {
+            const url = `https://api.mapbox.com/directions/v5/mapbox/${profile}/${start[0]},${start[1]};${end[0]},${end[1]}?steps=true&geometries=geojson&language=es&access_token=${mapboxgl.accessToken}`;
+            
+            const response = await fetch(url);
+            const data = await response.json();
+            
+            if (data.routes && data.routes.length > 0) {
+                return data.routes[0];
+            }
+            return null;
+        } catch (error) {
+            console.error('Error calculando ruta:', error);
+            return null;
+        }
+    }
+
+    // Mostrar ruta en el mapa
+    function displayRoute(route) {
+        // Limpiar ruta anterior
+        if (map.getSource('route')) {
+            map.removeLayer('route');
+            map.removeSource('route');
+        }
+
+        // Agregar nueva ruta
+        map.addSource('route', {
+            type: 'geojson',
+            data: {
+                type: 'Feature',
+                properties: {},
+                geometry: route.geometry
+            }
+        });
+
+        map.addLayer({
+            id: 'route',
+            type: 'line',
+            source: 'route',
+            layout: {
+                'line-join': 'round',
+                'line-cap': 'round'
+            },
+            paint: {
+                'line-color': '#4CAF50',
+                'line-width': 6,
+                'line-opacity': 0.8
+            }
+        });
+
+        // Ajustar vista del mapa
+        const coordinates = route.geometry.coordinates;
+        const bounds = coordinates.reduce((bounds, coord) => {
+            return bounds.extend(coord);
+        }, new mapboxgl.LngLatBounds(coordinates[0], coordinates[0]));
+
+        map.fitBounds(bounds, {
+            padding: 50
+        });
+    }
+
+    // Mostrar pasos de navegación
+    function displayNavigationSteps(steps) {
+        navSteps.innerHTML = '';
+        navigationSteps = steps;
+
+        steps.forEach((step, index) => {
+            const stepDiv = document.createElement('div');
+            stepDiv.className = 'nav-step';
+            stepDiv.dataset.index = index;
+
+            const icon = getManeuverIcon(step.maneuver.type);
+            const instruction = getSpanishInstruction(step.maneuver.instruction);
+            const distance = formatDistance(step.distance);
+
+            stepDiv.innerHTML = `
+                <div class="nav-step-icon">
+                    <span class="nav-step-maneuver">${icon}</span>
+                </div>
+                <div class="nav-step-content">
+                    <div class="nav-step-instruction">${instruction}</div>
+                    <div class="nav-step-distance">${distance}</div>
+                </div>
+            `;
+
+            stepDiv.addEventListener('click', () => {
+                highlightStep(index);
+            });
+
+            navSteps.appendChild(stepDiv);
+        });
+    }
+
+    // Resaltar paso actual
+    function highlightStep(index) {
+        document.querySelectorAll('.nav-step').forEach((step, i) => {
+            if (i === index) {
+                step.classList.add('active');
+                step.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            } else {
+                step.classList.remove('active');
+            }
+        });
+
+        currentNavigationStep = index;
+
+        // Centrar mapa en el paso actual
+        if (navigationSteps[index]) {
+            const coords = navigationSteps[index].maneuver.location;
+            map.flyTo({
+                center: coords,
+                zoom: 16,
+                duration: 1000
+            });
+        }
+    }
+
+    // Iniciar navegación
+    async function startNavigation() {
+        if (!userLocation || !destinationLocation) {
+            addMessage('⚠️ Por favor, selecciona tu ubicación y destino primero.', 'bot');
+            return;
+        }
+
+        addMessage('🧭 Calculando ruta segura...', 'bot');
+
+        const route = await calculateRoute(userLocation, destinationLocation, 'walking');
+
+        if (!route) {
+            addMessage('❌ No se pudo calcular la ruta. Intenta con otra ubicación.', 'bot');
+            return;
+        }
+
+        currentRoute = route;
+
+        // Mostrar información de la ruta
+        totalDistanceEl.textContent = formatDistance(route.distance);
+        totalDurationEl.textContent = formatDuration(route.duration);
+
+        // Calcular seguridad
+        const safety = calculateRouteSafety(route, 'walking');
+        routeSafetyEl.innerHTML = `<span class="safety-badge ${safety.badge}">${safety.text}</span>`;
+
+        // Mostrar ruta en el mapa
+        displayRoute(route);
+
+        // Mostrar pasos de navegación
+        displayNavigationSteps(route.legs[0].steps);
+
+        // Abrir panel de navegación
+        navigationPanel.classList.add('active');
+
+        // Resaltar primer paso
+        highlightStep(0);
+
+        // Notificar en el chat
+        addMessage(`✅ <strong>Ruta calculada exitosamente</strong>
+            <br><br>
+            📏 Distancia: ${formatDistance(route.distance)}
+            <br>⏱️ Tiempo estimado: ${formatDuration(route.duration)}
+            <br>🛡️ Seguridad: <span class="safety-badge ${safety.badge}">${safety.text}</span>
+            <br><br>
+            La navegación paso a paso está lista. Haz clic en "Iniciar" para comenzar.`, 'bot');
+    }
+
+    // Cerrar panel de navegación
+    navClose.addEventListener('click', () => {
+        navigationPanel.classList.remove('active');
+        navigationActive = false;
+        currentNavigationStep = 0;
+    });
+
+    // Botón iniciar navegación
+    startNavigationBtn.addEventListener('click', () => {
+        navigationActive = true;
+        highlightStep(0);
+        addMessage('🚀 ¡Navegación iniciada! Sigue las instrucciones paso a paso.', 'bot');
+    });
+
+    // Botón cancelar navegación
+    cancelNavigationBtn.addEventListener('click', () => {
+        navigationPanel.classList.remove('active');
+        navigationActive = false;
+        currentNavigationStep = 0;
+        
+        // Limpiar ruta del mapa
+        if (map.getSource('route')) {
+            map.removeLayer('route');
+            map.removeSource('route');
+        }
+        
+        addMessage('❌ Navegación cancelada.', 'bot');
+    });
+    // Elementos del DOM del chat
+    const chatMessages = document.getElementById('chat-messages');
+    const chatInput = document.getElementById('chat-input');
+    const chatSend = document.getElementById('chat-send');
+
+    // Elementos del DOM del panel de navegación
+    const navigationPanel = document.getElementById('navigation-panel');
+    const navClose = document.getElementById('nav-close');
+    const navSteps = document.getElementById('nav-steps');
+    const startNavigationBtn = document.getElementById('start-navigation');
+    const cancelNavigationBtn = document.getElementById('cancel-navigation');
+    const totalDistanceEl = document.getElementById('total-distance');
+    const totalDurationEl = document.getElementById('total-duration');
+    const routeSafetyEl = document.getElementById('route-safety');
+
+    // Abrir/cerrar chat
+    chatButton.addEventListener('click', () => {
+        chatPanel.classList.toggle('active');
+        // Mensaje de bienvenida si es la primera vez
+        if (chatMessages.children.length === 0) {
+            addMessage(`¡Hola! 👋 Soy tu asistente de rutas seguras.
+                <br><br>
+                Puedo ayudarte a encontrar la ruta más segura según tu medio de transporte:
+                <br><br>
+                🚗 Coche | 🏍️ Moto | 🚴 Bicicleta | 🚶 A pie
+                <br><br>
+                ¿Qué te gustaría hacer?
+                <div class="suggestion-buttons">
+                    <button class="suggestion-btn" onclick="handleSuggestion('Quiero calcular una ruta segura')">Calcular ruta</button>
+                    <button class="suggestion-btn" onclick="handleSuggestion('¿Qué medio de transporte me recomiendas?')">Recomendación de transporte</button>
+                </div>`, 'bot');
+        }
+    });
+
+    chatClose.addEventListener('click', () => {
+        chatPanel.classList.remove('active');
+    });
+
+    // Enviar mensaje
+    chatSend.addEventListener('click', sendMessage);
+    chatInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') sendMessage();
+    });
+
+    // Función para manejar sugerencias
+    window.handleSuggestion = function(text) {
+        chatInput.value = text;
+        sendMessage();
+    };
+
+    // Función para enviar mensaje
+    function sendMessage() {
+        const message = chatInput.value.trim();
+        if (!message) return;
+
+        // Agregar mensaje del usuario
+        addMessage(message, 'user');
+        chatInput.value = '';
+
+        // Mostrar indicador de escritura
+        showTypingIndicator();
+
+        // Procesar mensaje
+        setTimeout(() => {
+            hideTypingIndicator();
+            processMessage(message);
+        }, 1000);
+    }
+
+    // Agregar mensaje al chat
+    function addMessage(text, type) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${type}`;
+        
+        const label = type === 'user' ? 'Tú' : 'Asistente';
+        messageDiv.innerHTML = `<strong>${label}</strong>${text}`;
+        
+        chatMessages.appendChild(messageDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    // Mostrar indicador de escritura
+    function showTypingIndicator() {
+        const indicator = document.createElement('div');
+        indicator.className = 'typing-indicator';
+        indicator.id = 'typing-indicator';
+        indicator.innerHTML = '<span></span><span></span><span></span>';
+        chatMessages.appendChild(indicator);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    // Ocultar indicador de escritura
+    function hideTypingIndicator() {
+        const indicator = document.getElementById('typing-indicator');
+        if (indicator) indicator.remove();
+    }
+
+    // Procesar mensaje del usuario
+    function processMessage(message) {
+        const lowerMessage = message.toLowerCase();
+
+        if (lowerMessage.includes('cómo funciona') || lowerMessage.includes('como funciona')) {
+            addMessage(`Las rutas seguras funcionan así:
+                <br><br>
+                🔍 <strong>Análisis de Riesgo:</strong> Evaluamos cada ruta basándonos en datos históricos de accidentes y zonas de riesgo.
+                <br><br>
+                🛡️ <strong>Prioridad en Seguridad:</strong> Priorizamos tu seguridad sobre la velocidad, evitando zonas peligrosas.
+                <br><br>
+                🚦 <strong>Factores Considerados:</strong> Tráfico, iluminación, tipo de vía, historial de incidentes.
+                <br><br>
+                📊 <strong>Calificación:</strong> Cada ruta recibe una calificación de seguridad (Alta, Media, Baja).`, 'bot');
+        }
+        else if (lowerMessage.includes('transporte') || lowerMessage.includes('vehículo') || lowerMessage.includes('medio') || lowerMessage.includes('recomiendas')) {
+            addMessage(`Te recomiendo según el tipo de transporte y la distancia:
+                <br><br>
+                🚶 <strong>A pie (Peatón):</strong>
+                <br>• Ideal para distancias cortas (menos de 2 km)
+                <br>• Rutas con buena iluminación y aceras amplias
+                <br>• Evitamos zonas con alto tráfico vehicular
+                <br>• Priorizamos parques y áreas peatonales
+                <br><br>
+                🚴 <strong>Bicicleta:</strong>
+                <br>• Recomendado para distancias medias (2-10 km)
+                <br>• Priorizamos ciclovías y calles con poco tráfico
+                <br>• Evitamos avenidas principales sin carril para bici
+                <br>• Consideramos pendientes y estado del pavimento
+                <br><br>
+                🏍️ <strong>Motocicleta:</strong>
+                <br>• Buena opción para distancias medias-largas (5-20 km)
+                <br>• Rutas con buen flujo vehicular
+                <br>• Evitamos zonas con alto índice de accidentes de motos
+                <br>• Priorizamos vías con carriles amplios
+                <br><br>
+                🚗 <strong>Coche:</strong>
+                <br>• Para distancias largas (más de 10 km)
+                <br>• Evitamos zonas con alto índice de accidentes
+                <br>• Consideramos tráfico y estado de las vías
+                <br>• Priorizamos avenidas principales y vías rápidas
+                <br><br>
+                <strong>💡 Consejo:</strong> Para elegir el mejor medio, considera:
+                <br>• Distancia a recorrer
+                <br>• Hora del día (tráfico)
+                <br>• Condiciones climáticas
+                <br>• Tu nivel de experiencia
+                <br><br>
+                ¿Qué medio de transporte vas a usar?
+                <div class="suggestion-buttons">
+                    <button class="suggestion-btn" onclick="handleSuggestion('Voy a pie')">🚶 A pie</button>
+                    <button class="suggestion-btn" onclick="handleSuggestion('Voy en bicicleta')">🚴 Bicicleta</button>
+                    <button class="suggestion-btn" onclick="handleSuggestion('Voy en moto')">🏍️ Moto</button>
+                    <button class="suggestion-btn" onclick="handleSuggestion('Voy en coche')">🚗 Coche</button>
+                </div>`, 'bot');
+        }
+        else if (lowerMessage.includes('pie') || lowerMessage.includes('caminando') || lowerMessage.includes('caminar')) {
+            addMessage(`🚶 <strong>Excelente elección para ir a pie!</strong>
+                <br><br>
+                <strong>Ventajas:</strong>
+                <br>✅ Cero emisiones
+                <br>✅ Ejercicio saludable
+                <br>✅ Acceso a calles peatonales
+                <br>✅ Sin costos de transporte
+                <br><br>
+                <strong>Recomendaciones de seguridad:</strong>
+                <br>• Usa aceras y cruces peatonales
+                <br>• Evita caminar solo de noche
+                <br>• Mantente alerta en zonas concurridas
+                <br>• Lleva tu celular cargado
+                <br><br>
+                Ahora busca tu destino para calcular la ruta más segura a pie.`, 'bot');
+        }
+        else if (lowerMessage.includes('bicicleta') || lowerMessage.includes('bici') || lowerMessage.includes('ciclista')) {
+            addMessage(`🚴 <strong>¡Genial! La bicicleta es una excelente opción.</strong>
+                <br><br>
+                <strong>Ventajas:</strong>
+                <br>✅ Rápido para distancias medias
+                <br>✅ Ecológico y económico
+                <br>✅ Buen ejercicio cardiovascular
+                <br>✅ Evitas el tráfico
+                <br><br>
+                <strong>Recomendaciones de seguridad:</strong>
+                <br>• Usa casco siempre
+                <br>• Prefiere ciclovías cuando estén disponibles
+                <br>• Usa luces y reflectores de noche
+                <br>• Respeta los semáforos
+                <br>• Mantén tu bici en buen estado
+                <br><br>
+                Busca tu destino y te mostraré la ruta más segura con ciclovías.`, 'bot');
+        }
+        else if (lowerMessage.includes('moto') || lowerMessage.includes('motocicleta')) {
+            addMessage(`🏍️ <strong>Moto: velocidad y agilidad con responsabilidad.</strong>
+                <br><br>
+                <strong>Ventajas:</strong>
+                <br>✅ Rápido en tráfico
+                <br>✅ Económico en combustible
+                <br>✅ Fácil estacionamiento
+                <br>✅ Bueno para distancias medias-largas
+                <br><br>
+                <strong>Recomendaciones de seguridad:</strong>
+                <br>• Usa casco certificado SIEMPRE
+                <br>• Equipo de protección completo
+                <br>• Mantén distancia de seguridad
+                <br>• Evita puntos ciegos de otros vehículos
+                <br>• Conduce defensivamente
+                <br>• Revisa tu moto antes de salir
+                <br><br>
+                <strong>⚠️ Importante:</strong> Las motos tienen mayor riesgo de accidentes. Te recomendaré rutas que eviten zonas peligrosas.
+                <br><br>
+                Busca tu destino para calcular la ruta más segura en moto.`, 'bot');
+        }
+        else if (lowerMessage.includes('coche') || lowerMessage.includes('auto') || lowerMessage.includes('carro') || lowerMessage.includes('car')) {
+            addMessage(`🚗 <strong>Coche: comodidad para distancias largas.</strong>
+                <br><br>
+                <strong>Ventajas:</strong>
+                <br>✅ Cómodo para distancias largas
+                <br>✅ Protección contra clima
+                <br>✅ Capacidad para pasajeros y carga
+                <br>✅ Ideal para viajes familiares
+                <br><br>
+                <strong>Recomendaciones de seguridad:</strong>
+                <br>• Usa cinturón de seguridad
+                <br>• Respeta límites de velocidad
+                <br>• No uses el celular al conducir
+                <br>• Mantén distancia de seguridad
+                <br>• Revisa tu vehículo regularmente
+                <br>• Evita conducir cansado
+                <br><br>
+                <strong>💡 Tip:</strong> Te recomendaré rutas que eviten zonas con alto índice de accidentes y tráfico pesado.
+                <br><br>
+                Busca tu destino para calcular la ruta más segura en coche.`, 'bot');
+        }
+        else if (lowerMessage.includes('ruta') || lowerMessage.includes('destino') || lowerMessage.includes('ir a') || lowerMessage.includes('navega')) {
+            addMessage(`Para calcular una ruta segura con navegación paso a paso, necesito:
+                <br><br>
+                🎯 <strong>1. Tu destino:</strong> Usa el buscador en la esquina superior izquierda para buscar calles, direcciones o lugares (restaurantes, parques, tiendas, etc.)
+                <br><br>
+                📍 <strong>2. Tu ubicación actual:</strong>
+                <br>• Haz clic en el mapa para marcar tu posición
+                <br>• O usa el botón de geolocalización (📍) para usar tu GPS
+                <br><br>
+                🧭 <strong>3. Navegación:</strong> Una vez calculada la ruta, verás:
+                <br>• Instrucciones paso a paso
+                <br>• Distancia y tiempo estimado
+                <br>• Nivel de seguridad de la ruta
+                <br>• Guía visual en el mapa
+                <br><br>
+                ¡Comienza buscando tu destino ahora!`, 'bot');
+        }
+        else if (lowerMessage.includes('segura') || lowerMessage.includes('seguro')) {
+            addMessage(`La seguridad es nuestra prioridad. Nuestro sistema:
+                <br><br>
+                ✅ Evita zonas con alto índice de criminalidad
+                <br>✅ Prefiere calles bien iluminadas
+                <br>✅ Considera el historial de accidentes
+                <br>✅ Evalúa el estado de las vías
+                <br>✅ Analiza el flujo de tráfico
+                <br><br>
+                <span class="safety-badge safety-high">ALTA SEGURIDAD</span> = Ruta muy segura, altamente recomendada
+                <br>
+                <span class="safety-badge safety-medium">SEGURIDAD MEDIA</span> = Ruta aceptable, con precauciones
+                <br>
+                <span class="safety-badge safety-low">BAJA SEGURIDAD</span> = Ruta no recomendada, buscar alternativa`, 'bot');
+        }
+        else if (lowerMessage.includes('gracias') || lowerMessage.includes('ok') || lowerMessage.includes('vale')) {
+            addMessage('¡De nada! Estoy aquí para ayudarte a llegar seguro a tu destino. ¿Necesitas algo más? 😊', 'bot');
+        }
+        else {
+            addMessage(`Puedo ayudarte con:
+                <br><br>
+                🗺️ Calcular rutas seguras
+                <br>🛡️ Información sobre seguridad vial
+                <br>🚦 Recomendaciones de transporte
+                <br>📍 Análisis de zonas de riesgo
+                <br><br>
+                ¿Qué te gustaría saber?
+                <div class="suggestion-buttons">
+                    <button class="suggestion-btn" onclick="handleSuggestion('Quiero calcular una ruta segura')">Calcular ruta segura</button>
+                    <button class="suggestion-btn" onclick="handleSuggestion('¿Qué zonas son más seguras?')">Zonas seguras</button>
+                    <button class="suggestion-btn" onclick="handleSuggestion('Consejos de seguridad')">Consejos de seguridad</button>
+                </div>`, 'bot');
+        }
+    }
+
+    // Función para calcular nivel de seguridad de una ruta
+    function calculateRouteSafety(route, transportType) {
+        // Simulación de cálculo de seguridad basado en los datos de riesgo
+        // En una implementación real, esto analizaría los datos GeoJSON de riesgo
+        
+        const safetyScore = Math.random(); // Simulación
+        
+        if (safetyScore > 0.7) {
+            return {
+                level: 'high',
+                score: safetyScore,
+                badge: 'safety-high',
+                text: 'ALTA SEGURIDAD'
+            };
+        } else if (safetyScore > 0.4) {
+            return {
+                level: 'medium',
+                score: safetyScore,
+                badge: 'safety-medium',
+                text: 'SEGURIDAD MEDIA'
+            };
+        } else {
+            return {
+                level: 'low',
+                score: safetyScore,
+                badge: 'safety-low',
+                text: 'BAJA SEGURIDAD'
+            };
+        }
+    }
+
+    // Escuchar eventos del geocoder para capturar destinos
+    geocoder.on('result', (e) => {
+        destinationLocation = e.result.geometry.coordinates;
+        
+        // Agregar marcador de destino
+        new mapboxgl.Marker({ color: '#FF5722' })
+            .setLngLat(destinationLocation)
+            .setPopup(new mapboxgl.Popup().setHTML(`<strong>Destino</strong><br>${e.result.place_name}`))
+            .addTo(map);
+        
+        // Notificar en el chat
+        if (chatPanel.classList.contains('active')) {
+            addMessage(`📍 <strong>Destino seleccionado:</strong> ${e.result.place_name}
+                <br><br>
+                Ahora necesito tu ubicación actual para calcular la ruta más segura con navegación paso a paso.
+                <br><br>
+                <strong>Opciones:</strong>
+                <br>• Haz clic en el mapa para marcar tu ubicación
+                <br>• Usa el botón de geolocalización (📍) para usar tu ubicación GPS`, 'bot');
+        }
+    });
+
+    // Permitir al usuario hacer clic en el mapa para establecer ubicación
+    map.on('click', (e) => {
+        if (!userLocation && destinationLocation) {
+            userLocation = [e.lngLat.lng, e.lngLat.lat];
+            
+            // Agregar marcador de origen
+            new mapboxgl.Marker({ color: '#4CAF50' })
+                .setLngLat(userLocation)
+                .setPopup(new mapboxgl.Popup().setHTML('<strong>Tu ubicación</strong>'))
+                .addTo(map);
+            
+            if (chatPanel.classList.contains('active')) {
+                addMessage(`✅ Ubicación establecida. Calculando la ruta más segura...`, 'bot');
+                
+                // Calcular ruta real con navegación paso a paso
+                startNavigation();
+            }
+        }
+    });
+
+    // Agregar control de geolocalización
+    const geolocateControl = new mapboxgl.GeolocateControl({
+        positionOptions: {
+            enableHighAccuracy: true
+        },
+        trackUserLocation: true,
+        showUserHeading: true
+    });
+    
+    map.addControl(geolocateControl);
+
+    // Escuchar cuando se obtiene la ubicación GPS
+    geolocateControl.on('geolocate', (e) => {
+        if (!userLocation && destinationLocation) {
+            userLocation = [e.coords.longitude, e.coords.latitude];
+            
+            if (chatPanel.classList.contains('active')) {
+                addMessage(`✅ Ubicación GPS obtenida. Calculando la ruta más segura...`, 'bot');
+                startNavigation();
+            }
+        }
+    });
+
+</script>
+
+</body>
+</html>
