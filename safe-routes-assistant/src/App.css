@@ -1,0 +1,47 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: Arial, sans-serif;
+}
+
+.app {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Global styles for safety badges used in chat messages */
+.safety-badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: bold;
+}
+
+.safety-high {
+  background: #4caf50;
+  color: white;
+}
+
+.safety-medium {
+  background: #ff9800;
+  color: white;
+}
+
+.safety-low {
+  background: #f44336;
+  color: white;
+}
+
+/* Mapbox geocoder customization */
+.mapboxgl-ctrl-geocoder {
+  min-width: 300px;
+}
+
+/* Made with Bob */
