@@ -18,6 +18,7 @@ function App() {
   const [userLocation, setUserLocation] = useState(null);
   const [destinationLocation, setDestinationLocation] = useState(null);
   const [currentRoute, setCurrentRoute] = useState(null);
+  const [showResetButton, setShowResetButton] = useState(false);
 
   // Refs for map and markers
   const mapRef = useRef(null);
@@ -103,34 +104,11 @@ function App() {
    */
   const handleGeocoderResult = useCallback((result) => {
     const coords = result.geometry.coordinates;
-    setDestinationLocation(coords);
-
-    // Remove existing destination marker
-    if (destinationMarkerRef.current) {
-      destinationMarkerRef.current.remove();
-    }
-
-    // Add new destination marker
-    if (mapRef.current) {
-      destinationMarkerRef.current = new mapboxgl.Marker({ color: '#FF5722' })
-        .setLngLat(coords)
-        .setPopup(
-          new mapboxgl.Popup().setHTML(
-            `<strong>Destino</strong><br>${result.place_name}`
-          )
-        )
-        .addTo(mapRef.current);
-    }
-  }, []);
-
-  /**
-   * Handle map click (manual location selection)
-   */
-  const handleMapClick = useCallback((lngLat) => {
-    // Only set user location if destination is set but user location isn't
-    if (destinationLocation && !userLocation) {
-      const coords = [lngLat.lng, lngLat.lat];
+    
+    // If no user location, set the geocoder result as user location
+    if (!userLocation) {
       setUserLocation(coords);
+      setShowResetButton(true);
 
       // Remove existing user marker
       if (userMarkerRef.current) {
@@ -142,16 +120,101 @@ function App() {
         userMarkerRef.current = new mapboxgl.Marker({ color: '#4CAF50' })
           .setLngLat(coords)
           .setPopup(
-            new mapboxgl.Popup().setHTML('<strong>Tu ubicación</strong>')
+            new mapboxgl.Popup().setHTML(
+              `<strong>📍 Tu ubicación</strong><br>${result.place_name}`
+            )
+          )
+          .addTo(mapRef.current);
+      }
+    }
+    // If user location exists, set as destination
+    else {
+      setDestinationLocation(coords);
+      setShowResetButton(true);
+
+      // Remove existing destination marker
+      if (destinationMarkerRef.current) {
+        destinationMarkerRef.current.remove();
+      }
+
+      // Add new destination marker
+      if (mapRef.current) {
+        destinationMarkerRef.current = new mapboxgl.Marker({ color: '#FF5722' })
+          .setLngLat(coords)
+          .setPopup(
+            new mapboxgl.Popup().setHTML(
+              `<strong>🎯 Destino</strong><br>${result.place_name}`
+            )
+          )
+          .addTo(mapRef.current);
+      }
+
+      // Auto-calculate route if both locations are set
+      if (userLocation) {
+        handleRouteRequest();
+      }
+    }
+  }, [userLocation, handleRouteRequest]);
+
+  /**
+   * Handle map click (manual location selection)
+   */
+  const handleMapClick = useCallback((lngLat) => {
+    const coords = [lngLat.lng, lngLat.lat];
+    
+    // If no user location, set it
+    if (!userLocation) {
+      setUserLocation(coords);
+      setShowResetButton(true);
+
+      // Remove existing user marker
+      if (userMarkerRef.current) {
+        userMarkerRef.current.remove();
+      }
+
+      // Add new user marker
+      if (mapRef.current) {
+        userMarkerRef.current = new mapboxgl.Marker({ color: '#4CAF50' })
+          .setLngLat(coords)
+          .setPopup(
+            new mapboxgl.Popup().setHTML('<strong>📍 Tu ubicación</strong>')
           )
           .addTo(mapRef.current);
 
-        if (isChatOpen) {
-          handleRouteRequest();
-        }
+        // Fly to location
+        mapRef.current.flyTo({
+          center: coords,
+          zoom: 15,
+          duration: 1000
+        });
       }
     }
-  }, [destinationLocation, userLocation, isChatOpen, handleRouteRequest]);
+    // If user location exists but no destination, set destination
+    else if (!destinationLocation) {
+      setDestinationLocation(coords);
+      setShowResetButton(true);
+
+      // Remove existing destination marker
+      if (destinationMarkerRef.current) {
+        destinationMarkerRef.current.remove();
+      }
+
+      // Add new destination marker
+      if (mapRef.current) {
+        destinationMarkerRef.current = new mapboxgl.Marker({ color: '#FF5722' })
+          .setLngLat(coords)
+          .setPopup(
+            new mapboxgl.Popup().setHTML('<strong>🎯 Destino</strong>')
+          )
+          .addTo(mapRef.current);
+      }
+
+      // Auto-calculate route if both locations are set
+      if (userLocation) {
+        handleRouteRequest();
+      }
+    }
+  }, [userLocation, destinationLocation, handleRouteRequest]);
 
   /**
    * Handle zone safety analysis
@@ -160,6 +223,7 @@ function App() {
     try {
       const coords = await detectUserLocation();
       setUserLocation(coords);
+      setShowResetButton(true);
 
       // Remove existing user marker
       if (userMarkerRef.current) {
@@ -211,6 +275,34 @@ function App() {
     }
   }, []);
 
+  /**
+   * Handle reset/clear all markers and routes
+   */
+  const handleReset = useCallback(() => {
+    // Clear state
+    setUserLocation(null);
+    setDestinationLocation(null);
+    setCurrentRoute(null);
+    setIsNavOpen(false);
+    setShowResetButton(false);
+
+    // Remove markers
+    if (userMarkerRef.current) {
+      userMarkerRef.current.remove();
+      userMarkerRef.current = null;
+    }
+    if (destinationMarkerRef.current) {
+      destinationMarkerRef.current.remove();
+      destinationMarkerRef.current = null;
+    }
+
+    // Remove route from map
+    if (mapRef.current && mapRef.current.getSource('route')) {
+      mapRef.current.removeLayer('route');
+      mapRef.current.removeSource('route');
+    }
+  }, []);
+
   return (
     <div className="app">
       <MapContainer
@@ -219,6 +311,16 @@ function App() {
         onMapClick={handleMapClick}
       />
 
+      {showResetButton && (
+        <button
+          className="reset-button"
+          onClick={handleReset}
+          title="Limpiar marcadores y rutas"
+        >
+          🔄 Nueva Ruta
+        </button>
+      )}
+
       <ChatPanel
         isOpen={isChatOpen}
         onToggle={() => setIsChatOpen(!isChatOpen)}
@@ -226,6 +328,7 @@ function App() {
         onRouteRequest={handleRouteRequest}
         userLocation={userLocation}
         destinationLocation={destinationLocation}
+        onAddressSelect={handleGeocoderResult}
       />
 
       <NavigationPanel

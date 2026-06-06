@@ -6,6 +6,49 @@
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
 
 /**
+ * Geocode an address or place name to coordinates
+ * @param {string} query - Address or place name to search
+ * @returns {Promise<Object|null>} Location data with coordinates or null if error
+ */
+export const geocodeAddress = async (query) => {
+  try {
+    // Enhanced geocoding with focus on Mexico City and Estado de México
+    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?` +
+      `access_token=${MAPBOX_TOKEN}&` +
+      `language=es&` +
+      `country=mx&` +
+      `bbox=-99.5,18.8,-98.6,20.2&` + // Mexico City and Estado de México area
+      `types=country,region,postcode,district,place,locality,neighborhood,address,poi&` +
+      `limit=5&` +
+      `autocomplete=true`;
+    
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    if (!data.features || data.features.length === 0) {
+      return null;
+    }
+    
+    // Return the best match
+    return {
+      coordinates: data.features[0].geometry.coordinates,
+      placeName: data.features[0].place_name,
+      text: data.features[0].text,
+      context: data.features[0].context,
+      allResults: data.features
+    };
+  } catch (error) {
+    console.error('Error geocoding address:', error);
+    return null;
+  }
+};
+
+/**
  * Calculate route between two points
  * @param {Array} start - [longitude, latitude]
  * @param {Array} end - [longitude, latitude]

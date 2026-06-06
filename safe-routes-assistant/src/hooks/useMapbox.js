@@ -52,13 +52,27 @@ const useMapbox = (config = {}) => {
       const geocoder = new MapboxGeocoder({
         accessToken: mapboxgl.accessToken,
         mapboxgl: mapboxgl,
-        marker: true,
-        placeholder: 'Buscar lugares, calles, direcciones...',
+        marker: false, // We'll handle markers manually
+        placeholder: 'Buscar: lugares, calles, colonias, direcciones...',
         language: 'es',
         countries: 'mx',
-        bbox: [-99.3667, 19.0489, -98.9414, 19.5926],
+        // Expanded bbox to cover all of Mexico City and Estado de México
+        bbox: [-99.5, 18.8, -98.6, 20.2],
         proximity: { longitude: center[0], latitude: center[1] },
-        types: 'country,region,postcode,district,place,locality,neighborhood,address,poi'
+        // Include ALL types for comprehensive search
+        types: 'country,region,postcode,district,place,locality,neighborhood,address,poi',
+        limit: 15, // Show more results
+        fuzzyMatch: true, // Enable fuzzy matching for better results
+        minLength: 1, // Start searching after 1 character
+        // Enable autocomplete for better UX
+        autocomplete: true,
+        // Increase search radius
+        routing: false,
+        // Enable all place types
+        filter: function(item) {
+          // Accept all results from Mexico
+          return item.properties.country_code === 'mx';
+        }
       });
 
       map.addControl(geocoder, 'top-left');

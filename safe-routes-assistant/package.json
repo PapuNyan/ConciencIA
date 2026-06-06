@@ -12,6 +12,7 @@
   "dependencies": {
     "@mapbox/mapbox-gl-geocoder": "^5.1.2",
     "mapbox-gl": "^3.24.0",
+    "openai": "^6.42.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"
   },

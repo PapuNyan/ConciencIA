@@ -1,21 +1,26 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import styles from './ChatPanel.module.css';
+import { getChatResponse, isOpenAIConfigured } from '../services/openaiService';
+import { geocodeAddress } from '../services/mapboxService';
 
 /**
  * ChatPanel Component
  * Interactive chat interface for the safe routes assistant
  */
-const ChatPanel = ({ 
-  isOpen, 
-  onToggle, 
-  onZoneAnalysis, 
+const ChatPanel = ({
+  isOpen,
+  onToggle,
+  onZoneAnalysis,
   onRouteRequest,
   userLocation,
-  destinationLocation 
+  destinationLocation,
+  onAddressSelect
 }) => {
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [useOpenAI] = useState(true); // Toggle between OpenAI and rule-based
+  const [conversationHistory, setConversationHistory] = useState([]);
   const messagesEndRef = useRef(null);
 
   // Auto-scroll to bottom when new messages arrive
@@ -42,8 +47,11 @@ const ChatPanel = ({
     }
   }, [onZoneAnalysis, addMessage]);
 
-  const processMessage = useCallback((msg) => {
+  const processMessage = useCallback(async (msg) => {
     const m = msg.toLowerCase();
+
+    // Check if OpenAI is configured and enabled
+    const shouldUseOpenAI = useOpenAI && isOpenAIConfigured();
 
     // Zone analysis keywords
     const zoneKeywords = ['zona', 'zonas', 'área', 'lugar', 'ubicación', 'dónde estoy',
@@ -53,24 +61,93 @@ const ChatPanel = ({
     const isZoneQuery = zoneKeywords.some(keyword => m.includes(keyword));
 
     // If asking about zone and NOT requesting a route
-    if (isZoneQuery && !m.includes('calcular') && !m.includes('navegar') && !m.includes('ruta')) {
+    if (isZoneQuery && !m.includes('calcular') && !m.includes('navegar') && !m.includes('ruta') && !m.includes('ir a') && !m.includes('llegar a')) {
       handleZoneAnalysis();
       return;
     }
 
-    // Route request
-    if (m.includes('ruta') || m.includes('calcular') || m.includes('navegar')) {
+    // Route request with possible address
+    const routeKeywords = ['ruta', 'calcular', 'navegar', 'ir a', 'llegar a', 'cómo llego', 'como llego', 'llevarme a'];
+    const hasRouteKeyword = routeKeywords.some(keyword => m.includes(keyword));
+    
+    if (hasRouteKeyword) {
+      // Try to extract address from message
+      let addressQuery = msg;
+      
+      // Remove common route keywords to extract the address
+      routeKeywords.forEach(keyword => {
+        addressQuery = addressQuery.replace(new RegExp(keyword, 'gi'), '').trim();
+      });
+      
+      // Clean up common words
+      addressQuery = addressQuery.replace(/^(a|al|hacia|hasta|en)\s+/gi, '').trim();
+      
+      // If there's text after the route keyword, try to geocode it
+      if (addressQuery.length > 3) {
+        addMessage('🔍 Buscando la ubicación...', 'bot');
+        
+        try {
+          const result = await geocodeAddress(addressQuery);
+          
+          if (result && result.coordinates) {
+            addMessage(`📍 Encontré: ${result.placeName}`, 'bot');
+            
+            // Call the address select handler
+            if (onAddressSelect) {
+              onAddressSelect({
+                geometry: { coordinates: result.coordinates },
+                place_name: result.placeName
+              });
+            }
+            
+            // If user location exists, calculate route automatically
+            if (userLocation) {
+              addMessage('🗺️ Calculando la ruta más segura...', 'bot');
+              setTimeout(() => {
+                if (onRouteRequest) {
+                  onRouteRequest();
+                }
+              }, 500);
+            } else {
+              const buttons = (
+                <SuggestionButtons
+                  onZoneClick={handleZoneAnalysis}
+                  onManualClick={() => addMessage('✋ Haz clic en el mapa para marcar tu ubicación manualmente.', 'bot')}
+                />
+              );
+              addMessage(
+                '📍 Para calcular la ruta, primero necesito tu ubicación.',
+                'bot',
+                buttons
+              );
+            }
+            return;
+          } else {
+            addMessage(`❌ No encontré "${addressQuery}". Intenta con un nombre más específico o usa el buscador en la parte superior.`, 'bot');
+            return;
+          }
+        } catch (error) {
+          console.error('Error geocoding:', error);
+          addMessage('❌ Error al buscar la ubicación. Intenta usar el buscador en la parte superior.', 'bot');
+          return;
+        }
+      }
+      
+      // No address provided, check if locations are set
       if (!userLocation) {
-        addMessage(
-          '📍 Para calcular una ruta, primero necesito tu ubicación.',
-          'bot',
+        const buttons = (
           <SuggestionButtons
             onZoneClick={handleZoneAnalysis}
             onManualClick={() => addMessage('✋ Haz clic en el mapa para marcar tu ubicación manualmente, o usa el buscador para encontrar un lugar.', 'bot')}
           />
         );
+        addMessage(
+          '📍 Para calcular una ruta, primero necesito tu ubicación.',
+          'bot',
+          buttons
+        );
       } else if (!destinationLocation) {
-        addMessage('🎯 Usa el buscador en la parte superior izquierda para seleccionar tu destino.', 'bot');
+        addMessage('🎯 ¿A dónde quieres ir? Escribe una dirección o usa el buscador en la parte superior.', 'bot');
       } else {
         if (onRouteRequest) {
           onRouteRequest();
@@ -85,7 +162,32 @@ const ChatPanel = ({
       return;
     }
 
-    // Predefined responses
+    // Use OpenAI for intelligent responses
+    if (shouldUseOpenAI) {
+      try {
+        const response = await getChatResponse(msg, conversationHistory);
+        
+        // Update conversation history
+        setConversationHistory(prev => [
+          ...prev,
+          { role: 'user', content: msg },
+          { role: 'assistant', content: response }
+        ].slice(-10)); // Keep only last 10 messages (5 exchanges)
+        
+        addMessage(response, 'bot');
+        return;
+      } catch (error) {
+        console.error('OpenAI error:', error);
+        addMessage(error.message, 'bot');
+        
+        // Fall back to rule-based if OpenAI fails
+        if (error.message.includes('API key')) {
+          addMessage('💡 Tip: Configura tu API key de OpenAI en el archivo .env para respuestas más inteligentes.', 'bot');
+        }
+      }
+    }
+
+    // Fallback: Rule-based responses
     const responses = {
       'funciona': '🔍 Analizamos rutas basándonos en datos de seguridad, evitando zonas peligrosas y priorizando tu bienestar.',
       'transporte': '🚶 A pie: < 2km | 🚴 Bici: 2-10km | 🏍️ Moto: 5-20km | 🚗 Coche: > 10km',
@@ -104,17 +206,20 @@ const ChatPanel = ({
     }
 
     // Default response
-    addMessage(
-      'Puedo ayudarte con:<br>🗺️ Analizar seguridad de zonas<br>🛡️ Calcular rutas seguras<br>🚦 Información de transporte',
-      'bot',
+    const buttons = (
       <SuggestionButtons
         onZoneClick={handleZoneAnalysis}
         onRouteClick={() => addMessage('🎯 Usa el buscador en la parte superior izquierda para seleccionar tu destino.', 'bot')}
       />
     );
-  }, [userLocation, destinationLocation, onRouteRequest, handleZoneAnalysis, addMessage]);
+    addMessage(
+      'Puedo ayudarte con:<br>🗺️ Analizar seguridad de zonas<br>🛡️ Calcular rutas seguras<br>🚦 Información de transporte',
+      'bot',
+      buttons
+    );
+  }, [userLocation, destinationLocation, onRouteRequest, handleZoneAnalysis, addMessage, useOpenAI, conversationHistory, onAddressSelect]);
 
-  const handleSendMessage = useCallback((msg) => {
+  const handleSendMessage = useCallback(async (msg) => {
     const text = msg || inputValue.trim();
     if (!text) return;
 
@@ -122,10 +227,14 @@ const ChatPanel = ({
     setInputValue('');
     setIsProcessing(true);
 
-    setTimeout(() => {
-      processMessage(text);
+    // Small delay for better UX
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    try {
+      await processMessage(text);
+    } finally {
       setIsProcessing(false);
-    }, 800);
+    }
   }, [inputValue, addMessage, processMessage]);
 
   // Show welcome message on first open
@@ -134,14 +243,17 @@ const ChatPanel = ({
   useEffect(() => {
     if (isOpen && messages.length === 0 && !hasShownWelcome.current) {
       hasShownWelcome.current = true;
-      addMessage(
-        '¡Hola! 👋 Soy tu asistente de rutas seguras. Puedo analizar la seguridad de tu zona actual o ayudarte a calcular rutas seguras.',
-        'bot',
+      const buttons = (
         <SuggestionButtons
           onZoneClick={handleZoneAnalysis}
           onRouteClick={() => handleSendMessage('Quiero una ruta segura')}
           onInfoClick={() => handleSendMessage('¿Cómo funciona?')}
         />
+      );
+      addMessage(
+        '¡Hola! 👋 Soy tu asistente de rutas seguras. Puedo analizar la seguridad de tu zona actual o ayudarte a calcular rutas seguras.',
+        'bot',
+        buttons
       );
     }
   }, [isOpen, messages.length, addMessage, handleZoneAnalysis, handleSendMessage]);
@@ -250,5 +362,3 @@ const SuggestionButtons = ({ onZoneClick, onRouteClick, onInfoClick, onManualCli
 };
 
 export default ChatPanel;
-
-// Made with Bob
